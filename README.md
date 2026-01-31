@@ -1,2 +1,2 @@
 # rtl-sdr
-real-time waterfall-spectrogram-visualisation-tool
+Real-time waterfall/spectrogram Visualisation tool
