@@ -441,8 +441,8 @@ class WaterfallApp(QtWidgets.QMainWindow):
         db_min = db_max - self.dynamic_range_db
         power_db = np.clip(power_db, db_min, db_max).astype(np.float32)
 
-        self.waterfall[:-1, :] = self.waterfall[1:, :]
-        self.waterfall[-1, :] = power_db
+        self.waterfall[1:, :] = self.waterfall[:-1, :]
+        self.waterfall[0, :] = power_db
         self.image_widget.set_waterfall(self.waterfall, db_min, db_max)
 
 
