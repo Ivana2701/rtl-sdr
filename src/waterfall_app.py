@@ -484,8 +484,9 @@ def create_iq_source(args: argparse.Namespace) -> BaseIQSource:
     try:
         return SdrIQSource(args.sample_rate, args.center_freq, args.gain)
     except Exception as exc:
-        print(f"RTL-SDR unavailable ({exc}). Falling back to mock IQ source.")
-        return MockIQSource(args.sample_rate, args.center_freq)
+        raise RuntimeError(
+            f"RTL-SDR unavailable ({exc}). Ensure drivers are installed and the DLL is in rtlsdr_dll."
+        )
 
 
 def main(argv=None) -> None:

@@ -13,7 +13,7 @@ os.environ.setdefault("PYQTGRAPH_QT_LIB", "PySide6")
 
 # ---- RTL-SDR DLL path (local, avoids user-specific paths) ----
 try:
-    rtl_dll_dir = os.path.join(ROOT_DIR, "rtlsdr_dll")
+    rtl_dll_dir = r"C:\Users\Ivana\Downloads\Release\x64"
     if os.path.isdir(rtl_dll_dir):
         os.add_dll_directory(rtl_dll_dir)
 except Exception:
