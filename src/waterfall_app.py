@@ -50,6 +50,63 @@ class AxisLabel(QtWidgets.QWidget):
         painter.drawText(rect, QtCore.Qt.AlignCenter, self._text)
 
 
+class AxisScale(QtWidgets.QWidget):
+    def __init__(self, orientation: str, unit: str = "", tick_count: int = 5):
+        super().__init__()
+        self._orientation = orientation
+        self._unit = unit
+        self._tick_count = max(2, int(tick_count))
+        self._min_val = 0.0
+        self._max_val = 1.0
+
+        if self._orientation == "vertical":
+            self.setFixedWidth(56)
+        else:
+            self.setFixedHeight(28)
+
+    def set_range(self, min_val: float, max_val: float) -> None:
+        self._min_val = float(min_val)
+        self._max_val = float(max_val)
+        self.update()
+
+    def _format_value(self, value: float) -> str:
+        if self._unit == "MHz":
+            return f"{value:.3f}"
+        if self._unit == "s":
+            return f"{value:.1f}"
+        return f"{value:.2f}"
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.TextAntialiasing)
+        painter.setPen(self.palette().color(QtGui.QPalette.WindowText))
+
+        span = self._max_val - self._min_val
+        if span <= 0.0:
+            return
+
+        if self._orientation == "vertical":
+            x_axis = self.width() - 1
+            painter.drawLine(x_axis, 0, x_axis, self.height())
+            for i in range(self._tick_count):
+                t = i / (self._tick_count - 1)
+                y = int(t * (self.height() - 1))
+                value = self._min_val + t * span
+                painter.drawLine(x_axis - 6, y, x_axis, y)
+                label = self._format_value(value)
+                painter.drawText(0, y - 8, x_axis - 8, 16, QtCore.Qt.AlignRight, label)
+        else:
+            y_axis = 0
+            painter.drawLine(0, y_axis, self.width(), y_axis)
+            for i in range(self._tick_count):
+                t = i / (self._tick_count - 1)
+                x = int(t * (self.width() - 1))
+                value = self._min_val + t * span
+                painter.drawLine(x, y_axis, x, y_axis + 6)
+                label = self._format_value(value)
+                painter.drawText(x - 24, y_axis + 8, 48, 16, QtCore.Qt.AlignHCenter, label)
+
+
 class WaterfallCanvas(QtWidgets.QLabel):
     def __init__(self):
         super().__init__()
@@ -357,14 +414,21 @@ class WaterfallApp(QtWidgets.QMainWindow):
         self.y_axis_label = AxisLabel("Time (newest at top)", vertical=True)
         plot_row.addWidget(self.y_axis_label)
 
+        self.time_scale = AxisScale("vertical", unit="s", tick_count=6)
+        plot_row.addWidget(self.time_scale)
+
         self.image_widget = WaterfallCanvas()
         plot_row.addWidget(self.image_widget, 1)
+
+        self.freq_scale = AxisScale("horizontal", unit="MHz", tick_count=6)
+        layout.addWidget(self.freq_scale)
 
         self.freq_label = QtWidgets.QLabel("Frequency (MHz)")
         self.freq_label.setAlignment(QtCore.Qt.AlignCenter)
         layout.addWidget(self.freq_label)
 
         self.update_freq_axis()
+        self.update_time_axis()
 
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update_once)
@@ -375,7 +439,14 @@ class WaterfallApp(QtWidgets.QMainWindow):
         freqs_mhz = (freqs + self.source.center_freq_hz) / 1e6
         x_min = float(freqs_mhz[0])
         x_max = float(freqs_mhz[-1])
-        self.freq_label.setText(f"Frequency (MHz) {x_min:.3f} to {x_max:.3f}")
+        self.freq_scale.set_range(x_min, x_max)
+        self.freq_label.setText("Frequency (MHz)")
+
+    def update_time_axis(self) -> None:
+        if self.fps <= 0:
+            return
+        time_span_s = float(self.waterfall_rows) / float(self.fps)
+        self.time_scale.set_range(0.0, time_span_s)
 
     def apply_settings(self) -> None:
         self.center_freq_hz = float(self.freq_input.value()) * 1e6
@@ -407,6 +478,7 @@ class WaterfallApp(QtWidgets.QMainWindow):
         self.timer.start(int(1000.0 / self.fps))
 
         self.update_freq_axis()
+        self.update_time_axis()
 
     def update_once(self) -> None:
         if self._closing:
