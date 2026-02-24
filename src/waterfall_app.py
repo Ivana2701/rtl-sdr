@@ -69,8 +69,15 @@ class AxisScale(QtWidgets.QWidget):
         self._max_val = float(max_val)
         self.update()
 
+    def set_tick_count(self, tick_count: int) -> None:
+        self._tick_count = max(2, int(tick_count))
+        self.update()
+
     def _format_value(self, value: float) -> str:
         if self._unit == "MHz":
+            span = self._max_val - self._min_val
+            if span <= 5.0:
+                return f"{value:.1f}"
             return f"{value:.3f}"
         if self._unit == "s":
             return f"{value:.1f}"
@@ -96,15 +103,19 @@ class AxisScale(QtWidgets.QWidget):
                 label = self._format_value(value)
                 painter.drawText(0, y - 8, x_axis - 8, 16, QtCore.Qt.AlignRight, label)
         else:
+            width = self.width()
+            usable_width = max(1, width - 1)
             y_axis = 0
-            painter.drawLine(0, y_axis, self.width(), y_axis)
+            painter.drawLine(0, y_axis, width - 1, y_axis)
             for i in range(self._tick_count):
                 t = i / (self._tick_count - 1)
-                x = int(t * (self.width() - 1))
+                x = int(round(t * usable_width))
                 value = self._min_val + t * span
                 painter.drawLine(x, y_axis, x, y_axis + 6)
                 label = self._format_value(value)
-                painter.drawText(x - 24, y_axis + 8, 48, 16, QtCore.Qt.AlignHCenter, label)
+                text_width = painter.fontMetrics().horizontalAdvance(label)
+                text_x = max(0, min(width - text_width, x - text_width // 2))
+                painter.drawText(text_x, y_axis + 8, text_width, 16, QtCore.Qt.AlignLeft, label)
 
 
 class WaterfallCanvas(QtWidgets.QLabel):
@@ -114,7 +125,8 @@ class WaterfallCanvas(QtWidgets.QLabel):
         self._rgb = None
         self.setMinimumSize(600, 400)
         self.setAlignment(QtCore.Qt.AlignCenter)
-        self.setScaledContents(True)
+        self.setScaledContents(False)
+        self._show_center_line = True
 
     def set_waterfall(self, waterfall: np.ndarray, db_min: float, db_max: float) -> None:
         if waterfall.size == 0:
@@ -130,6 +142,23 @@ class WaterfallCanvas(QtWidgets.QLabel):
         h, w, _ = self._rgb.shape
         qimg = QtGui.QImage(self._rgb.data, w, h, 3 * w, QtGui.QImage.Format_RGB888)
         self.setPixmap(QtGui.QPixmap.fromImage(qimg))
+
+    def paintEvent(self, event) -> None:
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.SmoothPixmapTransform)
+        pixmap = self.pixmap()
+        if pixmap:
+            painter.drawPixmap(self.rect(), pixmap)
+        else:
+            super().paintEvent(event)
+            return
+
+        if self._show_center_line:
+            x = self.width() // 2
+            pen = QtGui.QPen(QtGui.QColor(255, 255, 255, 160))
+            pen.setWidth(1)
+            painter.setPen(pen)
+            painter.drawLine(x, 0, x, self.height())
 
 
 def setup_logging() -> str:
@@ -201,7 +230,9 @@ class SdrIQSource(BaseIQSource):
         super().__init__(sample_rate_hz, center_freq_hz)
         self._sdr = RtlSdr()
         self._sdr.sample_rate = self.sample_rate_hz
+        self.sample_rate_hz = float(self._sdr.sample_rate)
         self._sdr.center_freq = self.center_freq_hz
+        self.center_freq_hz = float(self._sdr.center_freq)
         self.set_gain(gain)
 
     def read_samples(self, num_samples: int) -> np.ndarray:
@@ -210,10 +241,12 @@ class SdrIQSource(BaseIQSource):
     def set_sample_rate(self, sample_rate_hz: float) -> None:
         super().set_sample_rate(sample_rate_hz)
         self._sdr.sample_rate = self.sample_rate_hz
+        self.sample_rate_hz = float(self._sdr.sample_rate)
 
     def set_center_freq(self, center_freq_hz: float) -> None:
         super().set_center_freq(center_freq_hz)
         self._sdr.center_freq = self.center_freq_hz
+        self.center_freq_hz = float(self._sdr.center_freq)
 
     def set_gain(self, gain) -> None:
         self._sdr.gain = gain
@@ -366,7 +399,7 @@ class WaterfallApp(QtWidgets.QMainWindow):
         layout.addLayout(controls)
 
         self.freq_input = QtWidgets.QDoubleSpinBox()
-        self.freq_input.setRange(1.0, 2000.0)
+        self.freq_input.setRange(0.1, 2000.0)
         self.freq_input.setDecimals(6)
         self.freq_input.setValue(self.center_freq_hz / 1e6)
         self.freq_input.setSuffix(" MHz")
@@ -408,24 +441,33 @@ class WaterfallApp(QtWidgets.QMainWindow):
         controls.addWidget(self.source_label)
         controls.addStretch(1)
 
-        plot_row = QtWidgets.QHBoxLayout()
-        layout.addLayout(plot_row, 1)
+        plot_grid = QtWidgets.QGridLayout()
+        plot_grid.setContentsMargins(0, 0, 0, 0)
+        plot_grid.setHorizontalSpacing(0)
+        plot_grid.setVerticalSpacing(0)
+        layout.addLayout(plot_grid, 1)
 
         self.y_axis_label = AxisLabel("Time (newest at top)", vertical=True)
-        plot_row.addWidget(self.y_axis_label)
+        plot_grid.addWidget(self.y_axis_label, 0, 0)
 
         self.time_scale = AxisScale("vertical", unit="s", tick_count=6)
-        plot_row.addWidget(self.time_scale)
+        plot_grid.addWidget(self.time_scale, 0, 1)
 
         self.image_widget = WaterfallCanvas()
-        plot_row.addWidget(self.image_widget, 1)
+        plot_grid.addWidget(self.image_widget, 0, 2)
 
-        self.freq_scale = AxisScale("horizontal", unit="MHz", tick_count=6)
-        layout.addWidget(self.freq_scale)
+        self.freq_scale = AxisScale("horizontal", unit="MHz", tick_count=9)
+        plot_grid.addWidget(self.freq_scale, 1, 2)
+
+        plot_grid.setColumnStretch(2, 1)
 
         self.freq_label = QtWidgets.QLabel("Frequency (MHz)")
         self.freq_label.setAlignment(QtCore.Qt.AlignCenter)
         layout.addWidget(self.freq_label)
+
+        self.center_readout = QtWidgets.QLabel()
+        self.center_readout.setAlignment(QtCore.Qt.AlignCenter)
+        layout.addWidget(self.center_readout)
 
         self.update_freq_axis()
         self.update_time_axis()
@@ -435,12 +477,22 @@ class WaterfallApp(QtWidgets.QMainWindow):
         self.timer.start(int(1000.0 / self.fps))
 
     def update_freq_axis(self) -> None:
-        freqs = np.fft.fftshift(np.fft.fftfreq(self.nfft, d=1.0 / self.source.sample_rate_hz))
-        freqs_mhz = (freqs + self.source.center_freq_hz) / 1e6
-        x_min = float(freqs_mhz[0])
-        x_max = float(freqs_mhz[-1])
+        sample_rate_hz = float(self.sample_rate_hz)
+        if sample_rate_hz <= 0.0:
+            return
+        center_hz = float(self.center_freq_hz)
+        half_span_hz = 0.5 * sample_rate_hz
+        x_min = (center_hz - half_span_hz) / 1e6
+        x_max = (center_hz + half_span_hz) / 1e6
         self.freq_scale.set_range(x_min, x_max)
+        span_mhz = x_max - x_min
+        if span_mhz <= 5.0:
+            tick_count = int(round(span_mhz / 0.1)) + 1
+            self.freq_scale.set_tick_count(max(5, tick_count))
+        else:
+            self.freq_scale.set_tick_count(9)
         self.freq_label.setText("Frequency (MHz)")
+        self.center_readout.setText(f"Center line: {center_hz / 1e6:.6f} MHz")
 
     def update_time_axis(self) -> None:
         if self.fps <= 0:
@@ -453,6 +505,10 @@ class WaterfallApp(QtWidgets.QMainWindow):
         self.sample_rate_hz = float(self.sr_input.value()) * 1e6
         self.source.set_center_freq(self.center_freq_hz)
         self.source.set_sample_rate(self.sample_rate_hz)
+        self.center_freq_hz = float(self.source.center_freq_hz)
+        self.sample_rate_hz = float(self.source.sample_rate_hz)
+        self.freq_input.setValue(self.center_freq_hz / 1e6)
+        self.sr_input.setValue(self.sample_rate_hz / 1e6)
 
         gain_txt = self.gain_input.text().strip().lower()
         if gain_txt == "auto":
