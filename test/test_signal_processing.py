@@ -28,7 +28,7 @@ class TestComputePower(unittest.TestCase):
         iq = src.read_samples(MIN_NFFT)
         window = np.hanning(MIN_NFFT).astype(np.float32)
 
-        power_db, db_min, db_max, _ = compute_power_db(iq, MIN_NFFT, window, 60.0, None)
+        power_db, db_min, db_max = compute_power_db(iq, MIN_NFFT, window, 60.0, None)
         self.assertEqual(power_db.shape[0], MIN_NFFT)
         self.assertGreaterEqual(db_max - db_min, 60.0)
         self.assertLessEqual(float(power_db.max()), db_max + 1e-6)
