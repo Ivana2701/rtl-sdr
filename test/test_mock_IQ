@@ -1,0 +1,35 @@
+import numpy as np
+
+class MockIQSource:
+    def __init__(self, sample_rate_hz: float, center_freq_hz: float, tone_hz: float = -100e3):
+        self.sample_rate_hz = float(sample_rate_hz)
+        self.center_freq_hz = float(center_freq_hz)
+        self.tone_hz = float(tone_hz)
+        self._phase = 0.0
+
+    def set_sample_rate(self, sample_rate_hz: float) -> None:
+        self.sample_rate_hz = float(sample_rate_hz)
+
+    def set_center_freq(self, center_freq_hz: float) -> None:
+        self.center_freq_hz = float(center_freq_hz)
+
+    def set_gain(self, gain) -> None:
+        pass
+
+    def read_samples(self, num_samples: int) -> np.ndarray:
+        n = int(num_samples)
+        # phase increment per sample
+        dphi = 2.0 * np.pi * self.tone_hz / self.sample_rate_hz
+        phases = self._phase + dphi * np.arange(n, dtype=np.float64)
+        self._phase = (phases[-1] + dphi) % (2.0*np.pi)
+
+        tone = np.exp(1j * phases)
+        noise = (np.random.randn(n) + 1j*np.random.randn(n)) * 0.05
+        return (tone + noise).astype(np.complex64)
+
+    def close(self) -> None:
+        pass
+
+    @property
+    def description(self) -> str:
+        return f"Mock IQ (tone {self.tone_hz/1e3:.0f} kHz)"

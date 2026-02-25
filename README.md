@@ -51,6 +51,13 @@ Run with an IQ file:
 .\.venv\Scripts\python.exe .\main.py --iq-file .\test\sample_iq.csv
 ```
 
+## Test
+
+To test the functionallity + visualisation without the hardware run:
+'''powershell
+.\.venv\Scripts\python.exe .\main.py --mock --center-freq 86.5e6 --sample-rate 2.2e6 --gain auto --fft 2048 --fps 20
+'''
+
 ## Notes
 - If the app shows "Mock IQ", hardware init failed or `--mock` was used.
 - Make sure the RTL-SDR DLL folder is reachable and the dongle is plugged in.
